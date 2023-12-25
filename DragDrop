@@ -1,0 +1,162 @@
+# -*- coding: UTF-8 -*-
+"""
+@Project    ：temporary-water-and-power-supply-master
+@File       ：test.py
+@Author     ：hehe444
+@Date       ：2023/12/24 13:30
+@Description：
+"""
+import sys
+from PyQt5.QtCore import *
+from PyQt5.QtGui import *
+from PyQt5.QtWidgets import *
+from PyQt5.QtCore import *
+from qfluentwidgets import TableWidget, TreeWidget
+from qfluentwidgets.components.widgets.frameless_window import FramelessWindow
+from loguru import logger
+
+class TableWidgetDropDrag(TableWidget):
+    def __init__(self, parent=None):
+        super(TableWidgetDropDrag, self).__init__(parent=parent)
+        self.setDragEnabled(True)  # 允许拖拽
+
+    def mousePressEvent(self, event):
+        # Only proceed if the click is with the left mouse button
+        if event.button() != Qt.LeftButton:
+            return
+        # Convert the mouse event position to a table item index
+        itemIndex = self.indexAt(event.pos())
+        if not itemIndex.isValid():
+            return
+        row: int = itemIndex.row()
+        columnCount = self.columnCount()
+        dataList = []
+        for column in range(columnCount):
+            item = self.item(row, column)
+            if item is not None:
+                dataList.append(item.text())
+        logger.info(f"这列的数据{str(dataList)}")
+        byteArray = QByteArray(str(dataList).encode())
+        mimeData = QMimeData()
+        # 设置列表数据结构
+        mimeData.setData("application/x-qt-listdata", byteArray)
+        drag = QDrag(self)
+        drag.setMimeData(mimeData)  # 数据打包上车
+        logger.info(f"MIME类型：{mimeData.formats()}")
+        drag.exec(Qt.MoveAction | Qt.CopyAction)
+        super(TableWidgetDropDrag, self).mousePressEvent(event)
+
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        event.accept()  # 接受拖拽操作
+
+    def dragMoveEvent(self, event: QDragMoveEvent):
+        event.accept()  # 接受拖拽操作
+
+class TreeWidgetDropDrag(TreeWidget):
+    def __init__(self, parent=None):
+        super(TreeWidgetDropDrag, self).__init__(parent=parent)
+        self.setAcceptDrops(True)  # 允许数据拖入
+        self.setDragEnabled(True)  # 允许拖拽
+        self.dataDrag = QMimeData()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        logger.info(f"拖拽事件：{event}")
+        source = event.source()
+
+        if source == self:
+            # 控件内部拖拽
+            logger.info("拖拽事件发生于控件内部，不处理")
+            return
+
+        # 来自外部的拖拽
+        mineData = event.mimeData()
+        if mineData.hasFormat("application/x-qt-listdata"):
+            # 数据处理：将mineData转换成list
+            data = mineData.data("application/x-qt-listdata")
+            byteArray = bytearray(data)
+            dataList = eval(byteArray.decode())
+            logger.info(f"拖入的数据为：{dataList}")
+
+            pos = event.pos()
+            item = self.itemAt(pos)  # 拖拽最后的鼠标位置的item
+            if item is None:
+                # 默认最后的topLevelItem
+                parentItem = self.topLevelItem(self.topLevelItemCount() - 1)
+            elif item.parent() is None:
+                #
+                parentItem = item
+            else:
+                # child
+                parentItem = item.parent()
+
+            child = QTreeWidgetItem(dataList)
+            child.setFlags(child.flags() | Qt.ItemIsEditable)  # item 可编辑
+            parentItem.addChild(child)
+            if parentItem.isExpanded() is False:
+                parentItem.setExpanded(True)
+        else:
+            logger.info("没有数据")
+
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasFormat("application/x-qt-listdata"):
+            logger.info("dragEnterEvent允许拖拽")
+            event.accept()  # 接受拖拽操作
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event: QDragMoveEvent):
+        if event.mimeData().hasFormat("application/x-qt-listdata"):
+            event.accept()  # 接受拖拽操作
+        else:
+            event.ignore()
+
+class TestWindow(FramelessWindow):
+    def __init__(self):
+        super(TestWindow, self).__init__()
+
+        self.table = TableWidgetDropDrag()
+        self.tree = TreeWidgetDropDrag()
+        self.initContrllers()
+        self.initLayout()
+
+
+    def initContrllers(self) -> None:
+
+        # init tree
+        self.tree.setMinimumSize(200, 200)
+
+        self.tree.setHeaderLabels(["序号", "型号", "数据"])
+        topLevelItem = QTreeWidgetItem(["分支1"])
+        self.tree.addTopLevelItem(topLevelItem)
+
+       # init table
+        self.table.setMinimumSize(200, 200)
+        self.table.setRowCount(2)
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["序号", "型号", "数据"])
+        self.table.verticalHeader().hide()
+
+        data = [
+            ["01", "BX-10", "55"],
+            ["02", "BX-9", "45"]
+        ]
+
+        for i, line in enumerate(data):
+            for j, item in enumerate(line):
+                cellText = data[i][j]
+                cell = QTableWidgetItem(cellText)
+                cell.setTextAlignment(Qt.AlignCenter)
+                self.table.setItem(i, j, cell)
+
+    def initLayout(self) -> None:
+        self.resize(900, 300)
+        hBox = QHBoxLayout(self)
+        hBox.setContentsMargins(10, 38, 10, 10)
+        hBox.addWidget(self.table)
+        hBox.addWidget(self.tree)
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    win = TestWindow()
+    win.show()
+    sys.exit(app.exec_())
